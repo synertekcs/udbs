@@ -1,0 +1,59 @@
+# Bootstrap Configuration for SSL Certificate Generation
+# This temporary setup generates initial certificates before main services start
+
+version: '3.8'
+
+services:
+  # Temporary Traefik instance for certificate generation only
+  traefik-bootstrap:
+    image: traefik:v3.0
+    container_name: traefik-bootstrap
+    restart: "no"  # Don't restart - this is temporary
+    ports:
+      - "80:80"    # HTTP only for ACME challenge
+    volumes:
+      - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
+      - ${DATA_PATH:-./data}/acme:/etc/traefik/acme
+    environment:
+      - TRAEFIK_LOG_LEVEL=${TRAEFIK_LOG_LEVEL:-INFO}
+    command:
+      # Basic configuration for certificate generation
+      - "--api=false"
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+      
+      # Entry points
+      - "--entrypoints.web.address=:80"
+      
+      # Certificate resolver configuration
+      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.email=${ACME_EMAIL:-${EMAIL}}"
+      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.storage=/etc/traefik/acme/acme.json"
+      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.httpchallenge.entrypoint=web"
+      
+      # Optional: Use staging for testing
+      # - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      
+      # File provider for static route
+      - "--providers.file.filename=/etc/traefik/bootstrap.yml"
+      - "--providers.file.watch=false"
+      
+      # Disable Docker provider (not needed for bootstrap)
+      - "--providers.docker=false"
+    networks:
+      - bootstrap
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# Temporary network for bootstrap
+networks:
+  bootstrap:
+    driver: bridge
+    name: traefik-bootstrap

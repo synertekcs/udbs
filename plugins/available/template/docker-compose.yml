@@ -1,0 +1,163 @@
+# Plugin Template - Docker Compose Configuration
+# Copy this template to create new plugins for Ultimate Docker Business Server
+
+version: '3.8'
+
+services:
+  # Main service for your plugin
+  your-service-name:
+    image: your-docker-image:latest
+    container_name: ${PLUGIN_NAME:-your-plugin}-main
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      # Plugin-specific environment variables
+      - PLUGIN_VAR=${PLUGIN_VAR:-default-value}
+      - ANOTHER_VAR=${ANOTHER_VAR}
+      
+      # Common variables available to all plugins
+      - DOMAIN=${DOMAIN}
+      - TZ=${TZ:-UTC}
+    
+    # Volumes for persistent data
+    volumes:
+      - ${PLUGIN_NAME:-your-plugin}-data:/app/data
+      - ${PLUGIN_NAME:-your-plugin}-config:/app/config
+      # Bind mounts for configuration
+      # - ./config:/app/config:ro
+    
+    # Networks - connect to Traefik for web access
+    networks:
+      - traefik
+      # Optional: plugin-specific internal network
+      - ${PLUGIN_NAME:-your-plugin}-internal
+    
+    # Traefik labels for automatic routing and SSL
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      
+      # HTTP Router
+      - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.rule=Host(`${PLUGIN_SUBDOMAIN:-your-plugin}.${DOMAIN}`)"
+      - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.tls.certresolver=${CERT_RESOLVER:-letsencrypt-http}"
+      - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.middlewares=security-headers"
+      
+      # Service configuration
+      - "traefik.http.services.${PLUGIN_NAME:-your-plugin}.loadbalancer.server.port=${PLUGIN_PORT:-80}"
+      
+      # Optional: Authentication middleware
+      # - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.middlewares=${PLUGIN_NAME:-your-plugin}-auth,security-headers"
+      # - "traefik.http.middlewares.${PLUGIN_NAME:-your-plugin}-auth.basicauth.users=${PLUGIN_AUTH_USERS}"
+      
+      # Optional: IP whitelist
+      # - "traefik.http.middlewares.${PLUGIN_NAME:-your-plugin}-ip.ipwhitelist.sourcerange=${ALLOWED_IPS:-127.0.0.1/32}"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PLUGIN_PORT:-80}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: ${PLUGIN_MEMORY_LIMIT:-512M}
+          cpus: '${PLUGIN_CPU_LIMIT:-0.5}'
+        reservations:
+          memory: ${PLUGIN_MEMORY_RESERVE:-128M}
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Database service for your plugin
+  your-service-db:
+    image: postgres:15-alpine
+    container_name: ${PLUGIN_NAME:-your-plugin}-db
+    restart: unless-stopped
+    
+    environment:
+      - POSTGRES_DB=${PLUGIN_DB_NAME:-plugin_db}
+      - POSTGRES_USER=${PLUGIN_DB_USER:-plugin_user}
+      - POSTGRES_PASSWORD=${PLUGIN_DB_PASSWORD}
+    
+    volumes:
+      - ${PLUGIN_NAME:-your-plugin}-db-data:/var/lib/postgresql/data
+    
+    networks:
+      - ${PLUGIN_NAME:-your-plugin}-internal
+    
+    # Security: Database should not be exposed to Traefik network
+    labels:
+      - "traefik.enable=false"
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PLUGIN_DB_USER:-plugin_user}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis cache service
+  your-service-cache:
+    image: redis:7-alpine
+    container_name: ${PLUGIN_NAME:-your-plugin}-cache
+    restart: unless-stopped
+    
+    command: redis-server --appendonly yes --requirepass ${PLUGIN_REDIS_PASSWORD}
+    
+    volumes:
+      - ${PLUGIN_NAME:-your-plugin}-cache-data:/data
+    
+    networks:
+      - ${PLUGIN_NAME:-your-plugin}-internal
+    
+    labels:
+      - "traefik.enable=false"
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${PLUGIN_REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Networks
+networks:
+  # Connect to main Traefik network (created by core system)
+  traefik:
+    external: true
+    name: traefik
+  
+  # Plugin-specific internal network
+  your-plugin-internal:
+    name: ${PLUGIN_NAME:-your-plugin}-internal
+    driver: bridge
+    internal: true
+
+# Volumes
+volumes:
+  # Persistent data storage
+  your-plugin-data:
+    name: ${PLUGIN_NAME:-your-plugin}-data
+    driver: local
+  
+  # Configuration storage
+  your-plugin-config:
+    name: ${PLUGIN_NAME:-your-plugin}-config
+    driver: local
+  
+  # Database storage
+  your-plugin-db-data:
+    name: ${PLUGIN_NAME:-your-plugin}-db-data
+    driver: local
+  
+  # Cache storage
+  your-plugin-cache-data:
+    name: ${PLUGIN_NAME:-your-plugin}-cache-data
+    driver: local

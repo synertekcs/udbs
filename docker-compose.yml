@@ -1,0 +1,141 @@
+# Ultimate Docker Business Server - Main Configuration
+# Production-ready setup with Traefik and Socket Proxy
+
+version: '3.8'
+
+services:
+  # Socket Proxy - Secure Docker Socket Access
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: socket-proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Traefik-specific permissions only
+      CONTAINERS: 1      # Allow access to container info
+      SERVICES: 1        # Allow access to service info  
+      NETWORKS: 1        # Allow access to network info
+      TASKS: 1           # Allow access to task info
+      
+      # Deny all dangerous permissions
+      VOLUMES: 0         # Deny volume management
+      IMAGES: 0          # Deny image management
+      INFO: 0            # Deny system info
+      BUILD: 0           # Deny image building
+      COMMIT: 0          # Deny container commits
+      CONFIG: 0          # Deny config management
+      DISTRIBUTION: 0    # Deny distribution info
+      EXEC: 0            # Deny container exec
+      GRPC: 0            # Deny gRPC access
+      PLUGINS: 0         # Deny plugin management
+      POST: 0            # Deny POST operations
+      SECRETS: 0         # Deny secrets management
+      SESSION: 0         # Deny session management
+      SWARM: 0           # Deny swarm management
+      SYSTEM: 0          # Deny system operations
+      VERSION: 0         # Deny version info
+      
+      # Logging
+      LOG_LEVEL: ${SOCKET_PROXY_LOG_LEVEL:-info}
+    networks:
+      - socket-proxy
+    ports:
+      - "127.0.0.1:2375:2375"  # Only accessible from localhost
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:2375/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Traefik Reverse Proxy
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    depends_on:
+      socket-proxy:
+        condition: service_healthy
+    ports:
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS
+    volumes:
+      - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
+      - ${DATA_PATH:-./data}/acme:/etc/traefik/acme
+    environment:
+      - TRAEFIK_LOG_LEVEL=${TRAEFIK_LOG_LEVEL:-INFO}
+    networks:
+      - traefik
+      - socket-proxy
+    labels:
+      # Enable Traefik for this service
+      - "traefik.enable=true"
+      
+      # Dashboard routing
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_DOMAIN:-traefik.${DOMAIN}}`)"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=${CERT_RESOLVER:-letsencrypt-http}"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=dashboard-auth,security-headers"
+      
+      # Security middleware
+      - "traefik.http.middlewares.dashboard-auth.basicauth.usersfile=/etc/traefik/dashboard-users"
+      - "traefik.http.middlewares.security-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.security-headers.headers.sslRedirect=true"
+      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
+      
+      # API service port (required for dashboard)
+      - "traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Networks
+networks:
+  # Public network for web-facing services
+  traefik:
+    name: ${TRAEFIK_NETWORK:-traefik}
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  
+  # Internal network for socket proxy (no internet access)
+  socket-proxy:
+    name: ${SOCKET_PROXY_NETWORK:-socket-proxy}
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+# Volumes
+volumes:
+  # ACME certificate storage
+  acme-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/acme
+  
+  # Traefik configuration
+  traefik-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CONFIG_PATH:-./config}/traefik

@@ -1,0 +1,200 @@
+# Plugin Metadata Configuration
+# This file defines plugin information and requirements
+
+# Basic Plugin Information
+name: "Your Plugin Name"
+description: "Brief description of what your plugin does"
+version: "1.0.0"
+author: "Your Name <your.email@example.com>"
+license: "MIT"
+homepage: "https://github.com/yourusername/your-plugin"
+
+# Plugin Categories (choose one primary)
+category: "monitoring"  # monitoring, mail, networking, storage, development, security, productivity
+tags:
+  - "web-ui"
+  - "monitoring"
+  - "logs"
+
+# System Requirements
+requirements:
+  # Minimum system requirements
+  memory: "512MB"
+  disk: "1GB"
+  cpu: "0.5"
+  
+  # Docker API access requirements
+  docker_socket: true  # Does plugin need Docker socket access?
+  
+  # Network requirements
+  networks:
+    - "traefik"  # Connect to Traefik network for web access
+  
+  # Required external ports
+  ports:
+    - "8080:8080"  # container_port:host_port
+  
+  # Domain requirements
+  domains:
+    - "{{ plugin_name }}.{{ domain }}"  # Will be plugin-name.yourdomain.com
+
+# Environment Variables
+environment:
+  # Required environment variables
+  required:
+    - name: "PLUGIN_ADMIN_PASSWORD"
+      description: "Admin password for plugin access"
+      type: "password"
+    - name: "PLUGIN_DATABASE_URL"
+      description: "Database connection URL"
+      type: "string"
+  
+  # Optional environment variables with defaults
+  optional:
+    - name: "PLUGIN_LOG_LEVEL"
+      description: "Logging level (DEBUG, INFO, WARN, ERROR)"
+      type: "string"
+      default: "INFO"
+    - name: "PLUGIN_MAX_USERS"
+      description: "Maximum number of users"
+      type: "integer"
+      default: 100
+    - name: "PLUGIN_ENABLE_SSL"
+      description: "Enable SSL within the container"
+      type: "boolean"
+      default: false
+
+# Dependencies
+dependencies:
+  # Other plugins this plugin depends on
+  plugins: []
+    # - name: "database"
+    #   version: ">=1.0.0"
+  
+  # External services required
+  services: []
+    # - "postgresql"
+    # - "redis"
+
+# Plugin Configuration
+configuration:
+  # Default subdomain (can be overridden)
+  subdomain: "{{ plugin_name }}"
+  
+  # Default container port
+  port: 8080
+  
+  # Health check endpoint
+  health_check: "/health"
+  
+  # Backup configuration
+  backup:
+    enabled: true
+    paths:
+      - "/app/data"
+      - "/app/config"
+  
+  # Update configuration
+  auto_update: true
+  update_strategy: "rolling"
+
+# Security Configuration
+security:
+  # Run as non-root user
+  non_root: true
+  
+  # Read-only filesystem
+  read_only_root: false
+  
+  # Drop capabilities
+  capabilities:
+    drop:
+      - "ALL"
+    add:
+      - "CHOWN"
+      - "SETUID"
+      - "SETGID"
+  
+  # Security context
+  run_as_user: 1000
+  run_as_group: 1000
+
+# Web Interface Configuration
+web_interface:
+  # Does this plugin provide a web interface?
+  enabled: true
+  
+  # Authentication required?
+  authentication: true
+  
+  # Authentication method
+  auth_method: "basic"  # basic, oauth, ldap, none
+  
+  # Default path
+  path: "/"
+  
+  # HTTPS required?
+  force_https: true
+
+# Monitoring Configuration
+monitoring:
+  # Provide metrics endpoint?
+  metrics: true
+  metrics_path: "/metrics"
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    path: "/health"
+    interval: "30s"
+    timeout: "10s"
+    retries: 3
+
+# Installation Hooks
+hooks:
+  # Pre-installation script
+  pre_install: "scripts/pre-install.sh"
+  
+  # Post-installation script
+  post_install: "scripts/post-install.sh"
+  
+  # Pre-removal script
+  pre_remove: "scripts/pre-remove.sh"
+  
+  # Post-removal script
+  post_remove: "scripts/post-remove.sh"
+
+# Documentation
+documentation:
+  readme: "README.md"
+  changelog: "CHANGELOG.md"
+  
+  # External documentation links
+  links:
+    - name: "Official Documentation"
+      url: "https://your-plugin-docs.com"
+    - name: "GitHub Repository"
+      url: "https://github.com/yourusername/your-plugin"
+
+# Support Information
+support:
+  issues: "https://github.com/yourusername/your-plugin/issues"
+  discussions: "https://github.com/yourusername/your-plugin/discussions"
+  email: "support@your-plugin.com"
+  
+# Compatibility
+compatibility:
+  # Minimum Ultimate Docker Business Server version
+  udbs_version: ">=1.0.0"
+  
+  # Supported architectures
+  architectures:
+    - "amd64"
+    - "arm64"
+  
+  # Tested on these OS versions
+  os_versions:
+    - "Ubuntu 20.04"
+    - "Ubuntu 22.04"
+    - "Debian 11"
+    - "Debian 12"
