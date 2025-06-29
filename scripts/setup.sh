@@ -542,7 +542,7 @@ services:
       - "443:443"
     volumes:
       - ./config/traefik:/etc/traefik:ro
-      - ./data/acme:/etc/traefik/acme
+      - acme-data:/etc/traefik/acme
     environment:
       - TRAEFIK_LOG_LEVEL=\${TRAEFIK_LOG_LEVEL:-INFO}
     networks:
