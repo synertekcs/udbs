@@ -127,21 +127,21 @@ check_user_security() {
     if [[ $EUID -eq 0 ]]; then
         log_critical "Running as root user"
         CRITICAL_ISSUES+=("Script running as root - security risk")
-        ((CRITICAL_FAILED++))
+        CRITICAL_FAILED=$((CRITICAL_FAILED + 1))
         return 1
     else
         log_success "Running as non-root user"
-        ((CRITICAL_PASSED++))
+        CRITICAL_PASSED=$((CRITICAL_PASSED + 1))
     fi
     
     # Check sudo access
-    if sudo -n true 2>/dev/null; then
+    if sudo -v 2>/dev/null; then
         log_success "User has sudo privileges"
-        ((CRITICAL_PASSED++))
+        CRITICAL_PASSED=$((CRITICAL_PASSED + 1))
     else
         log_critical "User lacks sudo privileges"
         CRITICAL_ISSUES+=("Current user cannot execute sudo commands")
-        ((CRITICAL_FAILED++))
+        CRITICAL_FAILED=$((CRITICAL_FAILED + 1))
         return 1
     fi
     
@@ -163,21 +163,21 @@ check_ssh_security() {
         local root_setting=$(grep "^PermitRootLogin" "$ssh_config" | awk '{print $2}')
         log_warning "SSH root login setting: $root_setting (should be 'no')"
         WARNING_ISSUES+=("SSH root login not disabled")
-        ((WARNING_COUNT++))
+        WARNING_COUNT=$((WARNING_COUNT + 1))
     else
         log_warning "SSH root login setting not explicitly configured"
         WARNING_ISSUES+=("SSH root login setting unclear")
-        ((WARNING_COUNT++))
+        WARNING_COUNT=$((WARNING_COUNT + 1))
     fi
     
     # Check SSH key authentication
     if grep -q "^PubkeyAuthentication yes" "$ssh_config" 2>/dev/null; then
         log_success "SSH key authentication enabled"
-        ((CRITICAL_PASSED++))
+        CRITICAL_PASSED=$((CRITICAL_PASSED + 1))
     else
         log_warning "SSH key authentication not explicitly enabled"
         WARNING_ISSUES+=("SSH key authentication not confirmed")
-        ((WARNING_COUNT++))
+        WARNING_COUNT=$((WARNING_COUNT + 1))
     fi
     
     # Check password authentication
@@ -186,8 +186,10 @@ check_ssh_security() {
     else
         log_warning "SSH password authentication may be enabled"
         AVAILABLE_ENHANCEMENTS+=("Disable SSH password authentication")
-        ((ENHANCEMENT_AVAILABLE++))
+        ENHANCEMENT_AVAILABLE=$((ENHANCEMENT_AVAILABLE + 1))
     fi
+    
+    return 0
 }
 
 # Docker installation and access checks
@@ -283,7 +285,7 @@ check_firewall() {
     # Source the UFW checker if available
     if [[ -f "$SCRIPT_DIR/utils/ufw-checker.sh" ]]; then
         source "$SCRIPT_DIR/utils/ufw-checker.sh"
-        if check_firewall_internal; then
+        if check_firewall; then
             log_success "Firewall properly configured"
             ((CRITICAL_PASSED++))
             return 0
@@ -408,10 +410,6 @@ add_user_to_docker_group() {
 
 # Security enhancements menu
 offer_security_enhancements() {
-    if [[ $ENHANCEMENT_AVAILABLE -eq 0 ]]; then
-        return 0
-    fi
-    
     log_header "Security Enhancements Available"
     
     local enhancements=()
@@ -444,9 +442,38 @@ offer_security_enhancements() {
     fi
     
     echo ""
+    log_shield "SECURITY ENHANCEMENTS AVAILABLE:"
+    echo ""
+    
+    for i in "${!enhancements[@]}"; do
+        local enhancement="${enhancements[$i]}"
+        local desc=""
+        case "$enhancement" in
+            *"fail2ban"*)
+                desc="Automatically blocks IPs after failed login attempts"
+                ;;
+            *"security updates"*)
+                desc="Keeps system updated with security patches"
+                ;;
+            *"SSH hardening"*)
+                desc="Disable password authentication completely"
+                ;;
+            *"docker group"*)
+                desc="Allows running Docker without sudo"
+                ;;
+        esac
+        
+        local num=$((i + 1))
+        echo "$num) $enhancement"
+        if [[ -n "$desc" ]]; then
+            echo "   └─ $desc"
+        fi
+        echo ""
+    done
+    
     if ask_user "Install security enhancements?"; then
         echo ""
-        select_options enhancements selections "Available Security Enhancements:"
+        select_options enhancements selections "Select which enhancements to install:"
         
         echo ""
         log_shield "Installing selected security enhancements..."

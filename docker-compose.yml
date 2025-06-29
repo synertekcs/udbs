@@ -62,7 +62,7 @@ services:
       - "443:443"    # HTTPS
     volumes:
       - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
-      - ${DATA_PATH:-./data}/acme:/etc/traefik/acme
+      - acme-data:/etc/traefik/acme
     environment:
       - TRAEFIK_LOG_LEVEL=${TRAEFIK_LOG_LEVEL:-INFO}
     networks:
@@ -127,10 +127,6 @@ volumes:
   # ACME certificate storage
   acme-data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_PATH:-./data}/acme
   
   # Traefik configuration
   traefik-config:

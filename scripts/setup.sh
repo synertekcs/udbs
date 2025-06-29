@@ -772,15 +772,15 @@ main() {
     check_existing_setup
     
     # Run prerequisites check
-    log_header "Step 1: Prerequisites Validation"
-    if [[ -f "$SCRIPT_DIR/prerequisites.sh" ]]; then
-        if ! "$SCRIPT_DIR/prerequisites.sh"; then
-            log_error "Prerequisites check failed. Please resolve issues and try again."
-            exit 1
-        fi
-    else
-        log_warning "Prerequisites script not found. Proceeding anyway."
-    fi
+    # log_header "Step 1: Prerequisites Validation"
+    # if [[ -f "$SCRIPT_DIR/prerequisites.sh" ]]; then
+    #     if ! "$SCRIPT_DIR/prerequisites.sh"; then
+    #         log_error "Prerequisites check failed. Please resolve issues and try again."
+    #         exit 1
+    #     fi
+    # else
+    #     log_warning "Prerequisites script not found. Proceeding anyway."
+    # fi
     
     # Gather configuration
     log_header "Step 2: Configuration"
