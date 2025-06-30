@@ -456,9 +456,8 @@ services:
     ports:
       - "80:80"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config/traefik:/etc/traefik:ro
-      - ./data/acme:/etc/traefik/acme
+      - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
+      - acme-data:/etc/traefik/acme
     environment:
       - TRAEFIK_LOG_LEVEL=INFO
       - TRAEFIK_API=false
