@@ -1,8 +1,6 @@
 # Ultimate Docker Business Server - Main Configuration
 # Production-ready setup with Traefik and Socket Proxy
 
-version: '3.8'
-
 services:
   # Socket Proxy - Secure Docker Socket Access
   socket-proxy:

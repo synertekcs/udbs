@@ -1,59 +1,161 @@
-# Bootstrap Configuration for SSL Certificate Generation
-# This temporary setup generates initial certificates before main services start
-
-version: '3.8'
+# Plugin Template - Docker Compose Configuration
+# Copy this template to create new plugins for Ultimate Docker Business Server
 
 services:
-  # Temporary Traefik instance for certificate generation only
-  traefik-bootstrap:
-    image: traefik:v3.0
-    container_name: traefik-bootstrap
-    restart: "no"  # Don't restart - this is temporary
-    ports:
-      - "80:80"    # HTTP only for ACME challenge
-    volumes:
-      - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
-      - ${DATA_PATH:-./data}/acme:/etc/traefik/acme
+  # Main service for your plugin
+  your-service-name:
+    image: your-docker-image:latest
+    container_name: ${PLUGIN_NAME:-your-plugin}-main
+    restart: unless-stopped
+    
+    # Environment variables
     environment:
-      - TRAEFIK_LOG_LEVEL=${TRAEFIK_LOG_LEVEL:-INFO}
-    command:
-      # Basic configuration for certificate generation
-      - "--api=false"
-      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+      # Plugin-specific environment variables
+      - PLUGIN_VAR=${PLUGIN_VAR:-default-value}
+      - ANOTHER_VAR=${ANOTHER_VAR}
       
-      # Entry points
-      - "--entrypoints.web.address=:80"
-      
-      # Certificate resolver configuration
-      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.email=${ACME_EMAIL:-${EMAIL}}"
-      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.storage=/etc/traefik/acme/acme.json"
-      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.httpchallenge.entrypoint=web"
-      
-      # Optional: Use staging for testing
-      # - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
-      
-      # File provider for static route
-      - "--providers.file.filename=/etc/traefik/bootstrap.yml"
-      - "--providers.file.watch=false"
-      
-      # Disable Docker provider (not needed for bootstrap)
-      - "--providers.docker=false"
+      # Common variables available to all plugins
+      - DOMAIN=${DOMAIN}
+      - TZ=${TZ:-UTC}
+    
+    # Volumes for persistent data
+    volumes:
+      - ${PLUGIN_NAME:-your-plugin}-data:/app/data
+      - ${PLUGIN_NAME:-your-plugin}-config:/app/config
+      # Bind mounts for configuration
+      # - ./config:/app/config:ro
+    
+    # Networks - connect to Traefik for web access
     networks:
-      - bootstrap
+      - traefik
+      # Optional: plugin-specific internal network
+      - ${PLUGIN_NAME:-your-plugin}-internal
+    
+    # Traefik labels for automatic routing and SSL
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      
+      # HTTP Router
+      - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.rule=Host(`${PLUGIN_SUBDOMAIN:-your-plugin}.${DOMAIN}`)"
+      - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.tls.certresolver=${CERT_RESOLVER:-letsencrypt-http}"
+      - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.middlewares=security-headers"
+      
+      # Service configuration
+      - "traefik.http.services.${PLUGIN_NAME:-your-plugin}.loadbalancer.server.port=${PLUGIN_PORT:-80}"
+      
+      # Optional: Authentication middleware
+      # - "traefik.http.routers.${PLUGIN_NAME:-your-plugin}.middlewares=${PLUGIN_NAME:-your-plugin}-auth,security-headers"
+      # - "traefik.http.middlewares.${PLUGIN_NAME:-your-plugin}-auth.basicauth.users=${PLUGIN_AUTH_USERS}"
+      
+      # Optional: IP whitelist
+      # - "traefik.http.middlewares.${PLUGIN_NAME:-your-plugin}-ip.ipwhitelist.sourcerange=${ALLOWED_IPS:-127.0.0.1/32}"
+    
+    # Health check
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:${PLUGIN_PORT:-80}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: ${PLUGIN_MEMORY_LIMIT:-512M}
+          cpus: '${PLUGIN_CPU_LIMIT:-0.5}'
+        reservations:
+          memory: ${PLUGIN_MEMORY_RESERVE:-128M}
+    
+    # Logging configuration
     logging:
       driver: "json-file"
       options:
-        max-size: "5m"
-        max-file: "2"
+        max-size: "10m"
+        max-file: "3"
 
-# Temporary network for bootstrap
+  # Optional: Database service for your plugin
+  your-service-db:
+    image: postgres:15-alpine
+    container_name: ${PLUGIN_NAME:-your-plugin}-db
+    restart: unless-stopped
+    
+    environment:
+      - POSTGRES_DB=${PLUGIN_DB_NAME:-plugin_db}
+      - POSTGRES_USER=${PLUGIN_DB_USER:-plugin_user}
+      - POSTGRES_PASSWORD=${PLUGIN_DB_PASSWORD}
+    
+    volumes:
+      - ${PLUGIN_NAME:-your-plugin}-db-data:/var/lib/postgresql/data
+    
+    networks:
+      - ${PLUGIN_NAME:-your-plugin}-internal
+    
+    # Security: Database should not be exposed to Traefik network
+    labels:
+      - "traefik.enable=false"
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PLUGIN_DB_USER:-plugin_user}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis cache service
+  your-service-cache:
+    image: redis:7-alpine
+    container_name: ${PLUGIN_NAME:-your-plugin}-cache
+    restart: unless-stopped
+    
+    command: redis-server --appendonly yes --requirepass ${PLUGIN_REDIS_PASSWORD}
+    
+    volumes:
+      - ${PLUGIN_NAME:-your-plugin}-cache-data:/data
+    
+    networks:
+      - ${PLUGIN_NAME:-your-plugin}-internal
+    
+    labels:
+      - "traefik.enable=false"
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${PLUGIN_REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Networks
 networks:
-  bootstrap:
+  # Connect to main Traefik network (created by core system)
+  traefik:
+    external: true
+    name: traefik
+  
+  # Plugin-specific internal network
+  your-plugin-internal:
+    name: ${PLUGIN_NAME:-your-plugin}-internal
     driver: bridge
-    name: traefik-bootstrap
+    internal: true
+
+# Volumes
+volumes:
+  # Persistent data storage
+  your-plugin-data:
+    name: ${PLUGIN_NAME:-your-plugin}-data
+    driver: local
+  
+  # Configuration storage
+  your-plugin-config:
+    name: ${PLUGIN_NAME:-your-plugin}-config
+    driver: local
+  
+  # Database storage
+  your-plugin-db-data:
+    name: ${PLUGIN_NAME:-your-plugin}-db-data
+    driver: local
+  
+  # Cache storage
+  your-plugin-cache-data:
+    name: ${PLUGIN_NAME:-your-plugin}-cache-data
+    driver: local

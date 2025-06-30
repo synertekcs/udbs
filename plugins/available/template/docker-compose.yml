@@ -1,8 +1,6 @@
 # Plugin Template - Docker Compose Configuration
 # Copy this template to create new plugins for Ultimate Docker Business Server
 
-version: '3.8'
-
 services:
   # Main service for your plugin
   your-service-name:
