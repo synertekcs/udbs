@@ -550,6 +550,8 @@ services:
       --agree-tos 
       --non-interactive 
       --expand
+      --test-cert
+      --force-renewal
     networks:
       - bootstrap
 
