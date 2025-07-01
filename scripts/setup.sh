@@ -139,7 +139,6 @@ create_directories() {
         "$PROJECT_ROOT/plugins/enabled"
         "$DATA_DIR/letsencrypt"
         "$DATA_DIR/lib"
-        "$DATA_DIR/logs"
     )
     
     for dir in "${dirs[@]}"; do
@@ -306,10 +305,6 @@ SECRETS_PATH=./secrets
 # Let's Encrypt Configuration
 ACME_EMAIL=$EMAIL
 ACME_STORAGE=/letsencrypt/acme.json
-
-# User Configuration for Container Security
-USER_UID=$(id -u)
-USER_GID=$(id -g)
 
 # Development/Staging
 TRAEFIK_STAGING=${TRAEFIK_STAGING:-false}
@@ -542,13 +537,11 @@ services:
     image: certbot/certbot:latest
     container_name: certbot-bootstrap
     restart: "no"
-    user: "\${USER_UID}:\${USER_GID}"
     ports:
       - "80:80"
     volumes:
       - \${DATA_PATH:-./data}/letsencrypt:/etc/letsencrypt
       - \${DATA_PATH:-./data}/lib:/var/lib/letsencrypt
-      - \${DATA_PATH:-./data}/logs:/var/log/letsencrypt
     command: >
       certonly --standalone 
       --email \${EMAIL} 
@@ -557,9 +550,6 @@ services:
       --agree-tos 
       --non-interactive 
       --expand
-      --test-cert
-      --force-renewal
-      --logs-dir /var/log/letsencrypt
     networks:
       - bootstrap
 
@@ -676,35 +666,112 @@ check_ports() {
     return 0
 }
 
-# Bootstrap certificates using certbot
-bootstrap_certificates() {
-    log_section "Generate SSL Certificates"
+# Generate staging certificates for validation
+generate_certificates_staging() {
+    log_docker "Starting staging certificate validation..."
     
-    log_cert "Starting certificate generation with certbot..."
-    log_info "This may take a few minutes..."
+    # Create staging version of bootstrap compose
+    local bootstrap_staging="$PROJECT_ROOT/docker-compose.bootstrap-staging.yml"
+    cp "$DOCKER_COMPOSE_BOOTSTRAP" "$bootstrap_staging"
     
-    # Start certbot for certificate generation
-    log_docker "Starting certbot container..."
-    if ! docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" up; then
-        log_error "Certificate generation failed"
-        log_info "Common causes:"
-        log_info "  • DNS not pointing to this server"
-        log_info "  • Firewall blocking port 80"
-        log_info "  • Domain already has too many certificates this week"
-        docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" logs
+    # Ensure staging flags are present
+    if ! grep -q "test-cert" "$bootstrap_staging"; then
+        sed -i '/--force-renewal/i\      --test-cert' "$bootstrap_staging"
+    fi
+    
+    if ! docker compose -f "$bootstrap_staging" up; then
+        rm -f "$bootstrap_staging"
         return 1
     fi
     
-    log_docker "Certificate generation completed"
+    # Convert and validate staging certificates
+    if ! convert_certbot_to_traefik; then
+        rm -f "$bootstrap_staging"
+        return 1
+    fi
     
-    # Convert certificates for Traefik
-    convert_certbot_to_traefik
+    # Cleanup
+    docker compose -f "$bootstrap_staging" down
+    rm -f "$bootstrap_staging"
     
-    # Cleanup bootstrap container
-    log_docker "Cleaning up bootstrap container..."
-    docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" down
+    # Validate that certificates were created
+    if [[ ! -s "$ACME_DIR/acme.json" ]]; then
+        log_error "Staging certificates not generated properly"
+        return 1
+    fi
     
-    log_success "SSL certificates ready for Traefik"
+    log_success "Staging certificates validated successfully"
+    return 0
+}
+
+# Generate production certificates
+generate_certificates_production() {
+    log_docker "Starting production certificate generation..."
+    
+    # Create production version of bootstrap compose (remove test-cert and force-renewal)
+    local bootstrap_production="$PROJECT_ROOT/docker-compose.bootstrap-production.yml"
+    cp "$DOCKER_COMPOSE_BOOTSTRAP" "$bootstrap_production"
+    
+    # Remove staging flags for production
+    sed -i '/--test-cert/d' "$bootstrap_production"
+    sed -i 's/--force-renewal//' "$bootstrap_production"
+    
+    if ! docker compose -f "$bootstrap_production" up; then
+        rm -f "$bootstrap_production"
+        return 1
+    fi
+    
+    # Convert production certificates
+    if ! convert_certbot_to_traefik; then
+        rm -f "$bootstrap_production"
+        return 1
+    fi
+    
+    # Cleanup
+    docker compose -f "$bootstrap_production" down
+    rm -f "$bootstrap_production"
+    
+    log_success "Production certificates generated successfully"
+    return 0
+}
+
+# Bootstrap certificates using two-phase approach (staging then production)
+bootstrap_certificates() {
+    log_section "Generate SSL Certificates"
+    
+    log_cert "Two-phase certificate generation: staging validation → production certificates"
+    log_info "This ensures everything works before requesting production certificates"
+    
+    # Phase 1: Staging certificates for validation
+    log_cert "Phase 1: Validating setup with staging certificates..."
+    if ! generate_certificates_staging; then
+        log_error "Staging certificate validation failed"
+        log_info "Common causes:"
+        log_info "  • DNS not pointing to this server"
+        log_info "  • Firewall blocking port 80"
+        log_info "  • Domain configuration issues"
+        return 1
+    fi
+    
+    log_success "✅ Staging validation successful!"
+    
+    # Phase 2: Production certificates
+    log_cert "Phase 2: Generating production certificates..."
+    if ! generate_certificates_production; then
+        log_error "Production certificate generation failed"
+        log_warning "Staging certificates are still available for testing"
+        log_info "You can continue with staging certificates or troubleshoot the production issue"
+        
+        if ask_user "Continue with staging certificates?" "Y"; then
+            log_info "Continuing with staging certificates for testing"
+            return 0
+        else
+            return 1
+        fi
+    fi
+    
+    log_success "✅ Production certificates ready!"
+    log_cert "Certificate generation completed successfully"
     
     return 0
 }
