@@ -139,6 +139,7 @@ create_directories() {
         "$PROJECT_ROOT/plugins/enabled"
         "$DATA_DIR/letsencrypt"
         "$DATA_DIR/lib"
+        "$DATA_DIR/logs"
     )
     
     for dir in "${dirs[@]}"; do
@@ -547,6 +548,7 @@ services:
     volumes:
       - \${DATA_PATH:-./data}/letsencrypt:/etc/letsencrypt
       - \${DATA_PATH:-./data}/lib:/var/lib/letsencrypt
+      - \${DATA_PATH:-./data}/logs:/var/log/letsencrypt
     command: >
       certonly --standalone 
       --email \${EMAIL} 
@@ -557,6 +559,7 @@ services:
       --expand
       --test-cert
       --force-renewal
+      --logs-dir /var/log/letsencrypt
     networks:
       - bootstrap
 
