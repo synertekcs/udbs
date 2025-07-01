@@ -515,8 +515,8 @@ convert_certbot_to_traefik() {
           "main": "$DOMAIN",
           "sans": ["traefik.$DOMAIN"]
         },
-        "certificate": "$(base64 -w 0 "$cert_dir/fullchain.pem")",
-        "key": "$(base64 -w 0 "$cert_dir/privkey.pem")",
+        "certificate": "$(cat "$cert_dir/fullchain.pem" | base64 -w 0)",
+        "key": "$(cat "$cert_dir/privkey.pem" | base64 -w 0)",
         "Store": "default"
       }
     ]
