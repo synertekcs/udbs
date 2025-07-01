@@ -10,8 +10,8 @@ services:
     ports:
       - "80:80"    # HTTP only for ACME challenge
     volumes:
-      - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
-      - acme-data:/etc/traefik/acme
+    - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
+    - ${DATA_PATH:-./data}/acme:/letsencrypt
     environment:
       - TRAEFIK_LOG_LEVEL=${TRAEFIK_LOG_LEVEL:-INFO}
     command:
@@ -24,7 +24,7 @@ services:
       
       # Certificate resolver configuration
       - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.email=${ACME_EMAIL:-${EMAIL}}"
-      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.storage=/etc/traefik/acme/acme.json"
+      - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.${CERT_RESOLVER:-letsencrypt-http}.acme.httpchallenge.entrypoint=web"
       
       # Optional: Use staging for testing
@@ -56,7 +56,6 @@ networks:
     driver: bridge
     name: traefik-bootstrap
 
-# Volumes
 volumes:
-  acme-data:
-    driver: local
+  - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
+  - ${DATA_PATH:-./data}/acme:/letsencrypt

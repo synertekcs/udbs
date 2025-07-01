@@ -456,7 +456,7 @@ services:
       - "80:80"
     volumes:
       - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
-      - acme-data:/letsencrypt
+      - ${DATA_PATH:-./data}/acme:/letsencrypt
     environment:
       - TRAEFIK_LOG_LEVEL=INFO
       - TRAEFIK_API=false
@@ -496,8 +496,6 @@ EOF
     # Main production compose file
     cat > "$DOCKER_COMPOSE_MAIN" << EOF
 # Ultimate Docker Business Server - Main Configuration
-version: '3.8'
-
 services:
   # Socket Proxy - Secure Docker Socket Access
   socket-proxy:
@@ -546,7 +544,7 @@ services:
       - "443:443"
     volumes:
       - ./config/traefik:/etc/traefik:ro
-      - acme-data:/letsencrypt
+      - ${DATA_PATH:-./data}/acme:/letsencrypt
     environment:
       - TRAEFIK_LOG_LEVEL=\${TRAEFIK_LOG_LEVEL:-INFO}
     networks:
@@ -571,10 +569,6 @@ networks:
     name: socket-proxy
     driver: bridge
     internal: true
-
-volumes:
-  acme-data:
-    driver: local
 EOF
     
     log_success "Docker Compose files created"
