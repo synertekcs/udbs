@@ -447,7 +447,6 @@ create_docker_compose_files() {
     # Bootstrap compose file (for certificate generation)
     cat > "$DOCKER_COMPOSE_BOOTSTRAP" << EOF
 # Bootstrap Configuration for Certificate Generation
-version: '3.8'
 
 services:
   traefik-bootstrap:
