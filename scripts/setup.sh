@@ -306,6 +306,10 @@ SECRETS_PATH=./secrets
 ACME_EMAIL=$EMAIL
 ACME_STORAGE=/letsencrypt/acme.json
 
+# User Configuration for Container Security
+USER_UID=$(id -u)
+USER_GID=$(id -g)
+
 # Development/Staging
 TRAEFIK_STAGING=${TRAEFIK_STAGING:-false}
 EOF
@@ -537,6 +541,7 @@ services:
     image: certbot/certbot:latest
     container_name: certbot-bootstrap
     restart: "no"
+    user: "\${USER_UID}:\${USER_GID}"
     ports:
       - "80:80"
     volumes:
