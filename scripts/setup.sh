@@ -137,6 +137,8 @@ create_directories() {
         "$SECRETS_DIR"
         "$PROJECT_ROOT/plugins/available"
         "$PROJECT_ROOT/plugins/enabled"
+        "$DATA_DIR/letsencrypt"
+        "$DATA_DIR/lib"
     )
     
     for dir in "${dirs[@]}"; do
@@ -302,7 +304,7 @@ SECRETS_PATH=./secrets
 
 # Let's Encrypt Configuration
 ACME_EMAIL=$EMAIL
-ACME_STORAGE=/etc/traefik/acme/acme.json
+ACME_STORAGE=/letsencrypt/acme.json
 
 # Development/Staging
 TRAEFIK_STAGING=${TRAEFIK_STAGING:-false}
@@ -440,62 +442,127 @@ EOF
     return 0
 }
 
+# Convert certbot certificates to Traefik acme.json format
+convert_certbot_to_traefik() {
+    log_section "Converting Certificates for Traefik"
+    
+    local cert_dir="${DATA_DIR}/letsencrypt/live/${DOMAIN}"
+    local acme_file="${ACME_DIR}/acme.json"
+    
+    if [[ ! -f "$cert_dir/fullchain.pem" ]]; then
+        log_error "Certificate files not found in $cert_dir"
+        return 1
+    fi
+    
+    # Create basic acme.json structure for Traefik
+    cat > "$acme_file" << EOF
+{
+  "letsencrypt-http": {
+    "Account": {
+      "Email": "$EMAIL",
+      "Registration": {
+        "uri": "https://acme-v02.api.letsencrypt.org/acme/reg/placeholder"
+      }
+    },
+    "Certificates": [
+      {
+        "domain": {
+          "main": "$DOMAIN",
+          "sans": ["traefik.$DOMAIN"]
+        },
+        "certificate": "$(base64 -w 0 "$cert_dir/fullchain.pem")",
+        "key": "$(base64 -w 0 "$cert_dir/privkey.pem")",
+        "Store": "default"
+      }
+    ]
+  }
+}
+EOF
+    
+    chmod 600 "$acme_file"
+    log_success "Certificates converted to Traefik format"
+}
+
+# Convert certbot certificates to Traefik acme.json format
+convert_certbot_to_traefik() {
+    log_section "Converting Certificates for Traefik"
+    
+    local cert_dir="${DATA_DIR}/letsencrypt/live/${DOMAIN}"
+    local acme_file="${ACME_DIR}/acme.json"
+    
+    if [[ ! -f "$cert_dir/fullchain.pem" ]]; then
+        log_error "Certificate files not found in $cert_dir"
+        return 1
+    fi
+    
+    # Create basic acme.json structure for Traefik
+    cat > "$acme_file" << EOF
+{
+  "letsencrypt-http": {
+    "Account": {
+      "Email": "$EMAIL",
+      "Registration": {
+        "uri": "https://acme-v02.api.letsencrypt.org/acme/reg/placeholder"
+      }
+    },
+    "Certificates": [
+      {
+        "domain": {
+          "main": "$DOMAIN",
+          "sans": ["traefik.$DOMAIN"]
+        },
+        "certificate": "$(base64 -w 0 "$cert_dir/fullchain.pem")",
+        "key": "$(base64 -w 0 "$cert_dir/privkey.pem")",
+        "Store": "default"
+      }
+    ]
+  }
+}
+EOF
+    
+    chmod 600 "$acme_file"
+    log_success "Certificates converted to Traefik format"
+}
+
 # Create Docker Compose files
 create_docker_compose_files() {
     log_section "Creating Docker Compose Files"
     
     # Bootstrap compose file (for certificate generation)
     cat > "$DOCKER_COMPOSE_BOOTSTRAP" << EOF
-# Bootstrap Configuration for Certificate Generation
+# Bootstrap Configuration for Certificate Generation using certbot
 
 services:
-  traefik-bootstrap:
-    image: traefik:v3.0
-    container_name: traefik-bootstrap
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot-bootstrap
+    restart: "no"
     ports:
       - "80:80"
     volumes:
-      - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
-      - ${DATA_PATH:-./data}/acme:/letsencrypt
-    environment:
-      - TRAEFIK_LOG_LEVEL=INFO
-      - TRAEFIK_API=false
-      - TRAEFIK_PROVIDERS_DOCKER=false
-    command:
-      - "--providers.file.filename=/etc/traefik/bootstrap.yml"
-      - "--entrypoints.web.address=:80"
-      - "--certificatesresolvers.$CERT_RESOLVER.acme.email=$EMAIL"
-      - "--certificatesresolvers.$CERT_RESOLVER.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.$CERT_RESOLVER.acme.httpchallenge.entrypoint=web"
+      - \${DATA_PATH:-./data}/letsencrypt:/etc/letsencrypt
+      - \${DATA_PATH:-./data}/lib:/var/lib/letsencrypt
+    command: >
+      certonly --standalone 
+      --email \${EMAIL} 
+      -d \${DOMAIN} 
+      -d traefik.\${DOMAIN}
+      --agree-tos 
+      --non-interactive 
+      --expand
     networks:
       - bootstrap
 
 networks:
   bootstrap:
     driver: bridge
-EOF
-    
-    # Bootstrap Traefik config
-    cat > "$TRAEFIK_DIR/bootstrap.yml" << EOF
-# Bootstrap configuration for certificate generation only
-http:
-  routers:
-    bootstrap-cert:
-      rule: "Host(\`$DOMAIN\`) || Host(\`traefik.$DOMAIN\`)"
-      service: "bootstrap-service"
-      tls:
-        certResolver: "$CERT_RESOLVER"
-  
-  services:
-    bootstrap-service:
-      loadBalancer:
-        servers:
-          - url: "http://127.0.0.1:80"
+    name: certbot-bootstrap
 EOF
     
     # Main production compose file
     cat > "$DOCKER_COMPOSE_MAIN" << EOF
 # Ultimate Docker Business Server - Main Configuration
+
 services:
   # Socket Proxy - Secure Docker Socket Access
   socket-proxy:
@@ -544,7 +611,7 @@ services:
       - "443:443"
     volumes:
       - ./config/traefik:/etc/traefik:ro
-      - ${DATA_PATH:-./data}/acme:/letsencrypt
+      - \${DATA_PATH:-./data}/acme:/letsencrypt
     environment:
       - TRAEFIK_LOG_LEVEL=\${TRAEFIK_LOG_LEVEL:-INFO}
     networks:
@@ -599,51 +666,35 @@ check_ports() {
     return 0
 }
 
-# Bootstrap certificates
+# Bootstrap certificates using certbot
 bootstrap_certificates() {
-    log_section "Bootstrap SSL Certificates"
+    log_section "Generate SSL Certificates"
     
-    log_cert "Starting certificate generation process..."
+    log_cert "Starting certificate generation with certbot..."
     log_info "This may take a few minutes..."
     
-    # Start bootstrap containers
-    if ! docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" up -d; then
-        log_error "Failed to start bootstrap containers"
-        return 1
-    fi
-    
-    log_docker "Bootstrap containers started"
-    
-    # Wait for certificate generation
-    local max_attempts=60
-    local attempt=0
-    
-    while [[ $attempt -lt $max_attempts ]]; do
-        if [[ -s "$ACME_DIR/acme.json" ]] && grep -q "$DOMAIN" "$ACME_DIR/acme.json" 2>/dev/null; then
-            log_success "SSL certificates generated successfully!"
-            break
-        fi
-        
-        ((attempt++))
-        echo -n "."
-        sleep 5
-    done
-    
-    echo ""
-    
-    if [[ $attempt -eq $max_attempts ]]; then
-        log_error "Certificate generation timed out"
-        log_info "Check DNS configuration and try again"
+    # Start certbot for certificate generation
+    log_docker "Starting certbot container..."
+    if ! docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" up; then
+        log_error "Certificate generation failed"
+        log_info "Common causes:"
+        log_info "  • DNS not pointing to this server"
+        log_info "  • Firewall blocking port 80"
+        log_info "  • Domain already has too many certificates this week"
         docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" logs
-        docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" down
         return 1
     fi
     
-    # Stop bootstrap containers
-    log_docker "Stopping bootstrap containers..."
+    log_docker "Certificate generation completed"
+    
+    # Convert certificates for Traefik
+    convert_certbot_to_traefik
+    
+    # Cleanup bootstrap container
+    log_docker "Cleaning up bootstrap container..."
     docker compose -f "$DOCKER_COMPOSE_BOOTSTRAP" down
     
-    log_success "Certificate bootstrap completed"
+    log_success "SSL certificates ready for Traefik"
     
     return 0
 }
