@@ -541,11 +541,13 @@ services:
     image: certbot/certbot:latest
     container_name: certbot-bootstrap
     restart: "no"
+    # REMOVE THIS LINE: user: "\${USER_UID}:\${USER_GID}"
     ports:
       - "80:80"
     volumes:
       - \${DATA_PATH:-./data}/letsencrypt:/etc/letsencrypt
       - \${DATA_PATH:-./data}/lib:/var/lib/letsencrypt
+      - \${DATA_PATH:-./data}/logs:/var/log/letsencrypt
     command: >
       certonly --standalone 
       --email \${EMAIL} 
@@ -554,6 +556,9 @@ services:
       --agree-tos 
       --non-interactive 
       --expand
+      --test-cert
+      --force-renewal
+      --logs-dir /var/log/letsencrypt
     networks:
       - bootstrap
 
