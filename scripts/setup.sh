@@ -446,6 +446,10 @@ EOF
 convert_certbot_to_traefik() {
     log_section "Converting Certificates for Traefik"
     
+    # Fix permissions on letsencrypt directory (certbot creates some files as root)
+    log_info "Fixing certificate file permissions..."
+    sudo chown -R $(id -u):$(id -g) "${DATA_DIR}/letsencrypt" 2>/dev/null || true
+    
     local cert_dir="${DATA_DIR}/letsencrypt/live/${DOMAIN}"
     local acme_file="${ACME_DIR}/acme.json"
     
@@ -932,7 +936,7 @@ main() {
     fi
     
     start_main_services
-    
+  
     # Finalize setup
     log_header "Step 6: Finalization"
     save_setup_state
