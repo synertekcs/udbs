@@ -347,7 +347,7 @@ certificatesResolvers:
   letsencrypt-http:
     acme:
       email: $EMAIL
-      storage: /etc/traefik/acme/acme.json
+      storage: /letsencrypt/acme.json
       httpChallenge:
         entryPoint: web
       # caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Staging
@@ -447,6 +447,8 @@ create_docker_compose_files() {
     # Bootstrap compose file (for certificate generation)
     cat > "$DOCKER_COMPOSE_BOOTSTRAP" << EOF
 # Bootstrap Configuration for Certificate Generation
+version: '3.8'
+
 services:
   traefik-bootstrap:
     image: traefik:v3.0
@@ -472,10 +474,6 @@ services:
 networks:
   bootstrap:
     driver: bridge
-
-volumes:
-  acme-data:
-    driver: local
 EOF
     
     # Bootstrap Traefik config
@@ -485,9 +483,15 @@ http:
   routers:
     bootstrap-cert:
       rule: "Host(\`$DOMAIN\`) || Host(\`traefik.$DOMAIN\`)"
-      service: "noop@internal"
+      service: "bootstrap-service"
       tls:
         certResolver: "$CERT_RESOLVER"
+  
+  services:
+    bootstrap-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:80"
 EOF
     
     # Main production compose file
@@ -543,7 +547,7 @@ services:
       - "443:443"
     volumes:
       - ./config/traefik:/etc/traefik:ro
-      - acme-data:/etc/traefik/acme
+      - acme-data:/letsencrypt
     environment:
       - TRAEFIK_LOG_LEVEL=\${TRAEFIK_LOG_LEVEL:-INFO}
     networks:

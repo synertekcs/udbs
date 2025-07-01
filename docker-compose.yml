@@ -60,7 +60,7 @@ services:
       - "443:443"    # HTTPS
     volumes:
       - ${CONFIG_PATH:-./config}/traefik:/etc/traefik:ro
-      - acme-data:/etc/traefik/acme
+      - acme-data:/letsencrypt
     environment:
       - TRAEFIK_LOG_LEVEL=${TRAEFIK_LOG_LEVEL:-INFO}
     networks:
